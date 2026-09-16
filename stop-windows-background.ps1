@@ -1,10 +1,14 @@
 $ErrorActionPreference = "Stop"
 
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
-$TaskName = "IClassStandaloneSigninAssistantHidden"
-$LegacyTaskName = "IClassStandaloneSigninAssistant"
-$HealthTaskName = "IClassStandaloneSigninAssistantHealthCheck"
+$TaskNames = @(
+  "IClassStandaloneSigninAssistantHealthCheck",
+  "IClassStandaloneSigninAssistantHidden",
+  "IClassStandaloneSigninAssistant",
+  "IClassStandaloneSigninAssistantPoller"
+)
 $PidFile = Join-Path $Root "state\background.pid"
+$Changed = $false
 
 function Get-AssistantProcess {
   Get-CimInstance Win32_Process |
@@ -16,56 +20,46 @@ function Get-AssistantProcess {
     }
 }
 
-$Stopped = $false
-$HealthTask = Get-ScheduledTask -TaskName $HealthTaskName -ErrorAction SilentlyContinue
-if ($HealthTask -and $HealthTask.State -eq "Running") {
-  Stop-ScheduledTask -TaskName $HealthTaskName
-  $Stopped = $true
+foreach ($TaskName in $TaskNames) {
+  $Task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+  if (-not $Task) { continue }
+  if ($Task.State -eq "Running") {
+    Stop-ScheduledTask -TaskName $TaskName -ErrorAction Stop
+    Start-Sleep -Seconds 1
+  }
+  if ($Task.State -ne "Disabled") {
+    Disable-ScheduledTask -TaskName $TaskName -ErrorAction Stop | Out-Null
+  }
+  Write-Host "Stopped and disabled scheduled task: $TaskName"
+  $Changed = $true
 }
 
-$Task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
-if ($Task -and $Task.State -eq "Running") {
-  Stop-ScheduledTask -TaskName $TaskName
-  Start-Sleep -Seconds 2
-  $Stopped = $true
-}
-
-$LegacyTask = Get-ScheduledTask -TaskName $LegacyTaskName -ErrorAction SilentlyContinue
-if ($LegacyTask -and $LegacyTask.State -eq "Running") {
-  Stop-ScheduledTask -TaskName $LegacyTaskName
-  Start-Sleep -Seconds 2
-  $Stopped = $true
-}
-
-$Processes = @(Get-AssistantProcess)
-foreach ($Process in $Processes) {
-  Stop-Process -Id $Process.ProcessId -Force
+foreach ($Process in @(Get-AssistantProcess)) {
+  Stop-Process -Id $Process.ProcessId -Force -ErrorAction Stop
   Write-Host "Stopped assistant process. PID: $($Process.ProcessId)"
-  $Stopped = $true
+  $Changed = $true
 }
 
-if (Test-Path $PidFile) {
+if (Test-Path -LiteralPath $PidFile) {
   try {
-    $PidText = Get-Content -Path $PidFile -Raw
-    $BackgroundPid = [int]($PidText.Trim())
-    $Process = Get-Process -Id $BackgroundPid -ErrorAction SilentlyContinue
-    if ($Process) {
-      Stop-Process -Id $BackgroundPid -Force
-      Write-Host "Stopped legacy hidden background process. PID: $BackgroundPid"
-      $Stopped = $true
+    $BackgroundPid = [int]((Get-Content -LiteralPath $PidFile -Raw).Trim())
+    $BackgroundProcess = Get-CimInstance Win32_Process -Filter "ProcessId = $BackgroundPid" -ErrorAction SilentlyContinue
+    $OwnedProcess = $BackgroundProcess -and $BackgroundProcess.CommandLine -and `
+      $BackgroundProcess.CommandLine -match "src[\\/]index\.mjs" -and `
+      $BackgroundProcess.CommandLine -match [regex]::Escape($Root)
+    if ($OwnedProcess) {
+      Stop-Process -Id $BackgroundPid -Force -ErrorAction Stop
+      Write-Host "Stopped legacy assistant process. PID: $BackgroundPid"
+      $Changed = $true
+    } elseif ($BackgroundProcess) {
+      Write-Warning "Ignored stale PID file because PID $BackgroundPid belongs to another process."
     }
   } finally {
-    Remove-Item -Path $PidFile -Force
+    Remove-Item -LiteralPath $PidFile -Force
   }
 }
 
-if ($Task) {
-  $Task = Get-ScheduledTask -TaskName $TaskName -ErrorAction Stop
-  Write-Host "Windows scheduled task state: $($Task.State)"
-  Write-Host "Note: this task will still start after the next Windows login."
-  Write-Host "To remove autostart, run: Unregister-ScheduledTask -TaskName `"$TaskName`" -Confirm:`$false"
+if (-not $Changed) {
+  Write-Host "No running or enabled auto sign-in entry was found."
 }
-
-if (-not $Stopped) {
-  Write-Host "No running background task or hidden background process found."
-}
+Write-Host "Auto sign-in is stopped and will stay disabled. Start it again with: .\start-windows-background.ps1"

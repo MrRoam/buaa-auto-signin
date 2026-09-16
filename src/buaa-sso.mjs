@@ -1,5 +1,8 @@
+import { fetchTextWithTimeout } from "./http-utils.mjs";
+
 const ICLASS_ENTRY = "https://iclass.buaa.edu.cn:8346/?type=jumpMyCenter";
 const MAX_REDIRECTS = 12;
+const ALLOWED_HOSTS = new Set(["sso.buaa.edu.cn", "iclass.buaa.edu.cn"]);
 
 export async function resolveIclassLoginName({ studentId, password, fetchImpl = fetch }) {
   if (!String(studentId || "").trim() || !String(password || "")) {
@@ -12,7 +15,7 @@ export async function resolveIclassLoginName({ studentId, password, fetchImpl = 
   const execution = inputValue(loginPage.body, "execution");
   if (!execution) throw new Error("统一认证页面缺少 execution 参数，登录流程可能已变化。");
   if (requiresCaptcha(loginPage.body)) {
-    throw new Error("统一认证当前要求验证码，请先在浏览器登录一次后重试。");
+    throw new Error("统一认证当前要求验证码，本工具暂不支持该验证流程。请稍后重试；若持续出现，请改用学校官方页面签到。");
   }
 
   const form = collectLoginFields(loginPage.body);
@@ -38,10 +41,10 @@ export async function resolveIclassLoginName({ studentId, password, fetchImpl = 
   return loginName;
 }
 
-class CookieSession {
+export class CookieSession {
   constructor(fetchImpl) {
     this.fetchImpl = fetchImpl;
-    this.cookies = new Map();
+    this.cookies = [];
   }
 
   get(url) {
@@ -60,23 +63,24 @@ class CookieSession {
     let currentUrl = String(url);
     let requestInit = { ...init };
     for (let count = 0; count < MAX_REDIRECTS; count += 1) {
+      assertAllowedUrl(currentUrl);
       const headers = new Headers({
         Accept: "*/*",
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/135 Safari/537.36",
         ...(requestInit.headers || {}),
       });
-      if (this.cookies.size) {
-        headers.set("Cookie", [...this.cookies].map(([name, value]) => `${name}=${value}`).join("; "));
-      }
-      const response = await this.fetchImpl(currentUrl, { ...requestInit, headers, redirect: "manual" });
-      this.absorbCookies(response.headers);
-      const body = await response.text();
+      const cookieHeader = this.cookieHeader(currentUrl);
+      if (cookieHeader) headers.set("Cookie", cookieHeader);
+      const fetched = await fetchTextWithTimeout(this.fetchImpl, currentUrl, { ...requestInit, headers, redirect: "manual" });
+      const { response, text: body } = fetched;
+      this.absorbCookies(response.headers, currentUrl);
       if (response.status < 300 || response.status >= 400) {
         return { response, body, url: currentUrl };
       }
       const location = response.headers.get("location");
       if (!location) return { response, body, url: currentUrl };
       currentUrl = new URL(location, currentUrl).toString();
+      assertAllowedUrl(currentUrl);
       const method = String(requestInit.method || "GET").toUpperCase();
       if (response.status === 303 || ([301, 302].includes(response.status) && method === "POST")) {
         requestInit = { method: "GET" };
@@ -85,14 +89,29 @@ class CookieSession {
     throw new Error("统一认证重定向次数过多。");
   }
 
-  absorbCookies(headers) {
-    const values = typeof headers.getSetCookie === "function"
+  cookieHeader(requestUrl) {
+    const url = new URL(requestUrl);
+    const now = Date.now();
+    this.cookies = this.cookies.filter((cookie) => cookie.expiresAt === null || cookie.expiresAt > now);
+    return this.cookies
+      .filter((cookie) => cookieMatches(cookie, url))
+      .sort((a, b) => b.path.length - a.path.length)
+      .map((cookie) => `${cookie.name}=${cookie.value}`)
+      .join("; ");
+  }
+
+  absorbCookies(headers, requestUrl) {
+    const rawValues = typeof headers.getSetCookie === "function"
       ? headers.getSetCookie()
-      : splitSetCookie(headers.get("set-cookie") || "");
+      : [headers.get("set-cookie") || ""];
+    const values = rawValues.flatMap(splitSetCookie);
     for (const value of values) {
-      const pair = value.split(";", 1)[0];
-      const separator = pair.indexOf("=");
-      if (separator > 0) this.cookies.set(pair.slice(0, separator).trim(), pair.slice(separator + 1).trim());
+      const cookie = parseSetCookie(value, new URL(requestUrl));
+      if (!cookie) continue;
+      this.cookies = this.cookies.filter((entry) => !(
+        entry.name === cookie.name && entry.domain === cookie.domain && entry.path === cookie.path
+      ));
+      if (cookie.expiresAt === null || cookie.expiresAt > Date.now()) this.cookies.push(cookie);
     }
   }
 }
@@ -100,6 +119,69 @@ class CookieSession {
 function splitSetCookie(value) {
   if (!value) return [];
   return value.split(/,(?=\s*[^;,=]+=[^;,]*)/g);
+}
+
+function parseSetCookie(header, requestUrl) {
+  const chunks = header.split(";").map((part) => part.trim());
+  const separator = chunks[0]?.indexOf("=") ?? -1;
+  if (separator <= 0) return null;
+  const cookie = {
+    name: chunks[0].slice(0, separator).trim(),
+    value: chunks[0].slice(separator + 1).trim(),
+    domain: requestUrl.hostname.toLowerCase(),
+    hostOnly: true,
+    path: defaultCookiePath(requestUrl.pathname),
+    secure: false,
+    expiresAt: null,
+  };
+  for (const chunk of chunks.slice(1)) {
+    const index = chunk.indexOf("=");
+    const name = (index < 0 ? chunk : chunk.slice(0, index)).trim().toLowerCase();
+    const value = index < 0 ? "" : chunk.slice(index + 1).trim();
+    if (name === "domain") {
+      const domain = value.replace(/^\./, "").toLowerCase();
+      if (!domainMatch(requestUrl.hostname, domain)) return null;
+      cookie.domain = domain;
+      cookie.hostOnly = false;
+    } else if (name === "path" && value.startsWith("/")) {
+      cookie.path = value;
+    } else if (name === "secure") {
+      cookie.secure = true;
+    } else if (name === "max-age" && /^-?\d+$/.test(value)) {
+      cookie.expiresAt = Date.now() + Number(value) * 1000;
+    } else if (name === "expires" && cookie.expiresAt === null) {
+      const parsed = Date.parse(value);
+      if (Number.isFinite(parsed)) cookie.expiresAt = parsed;
+    }
+  }
+  return cookie;
+}
+
+function cookieMatches(cookie, url) {
+  const domainOk = cookie.hostOnly
+    ? url.hostname.toLowerCase() === cookie.domain
+    : domainMatch(url.hostname, cookie.domain);
+  const pathOk = url.pathname === cookie.path
+    || url.pathname.startsWith(cookie.path.endsWith("/") ? cookie.path : `${cookie.path}/`);
+  return domainOk && pathOk && (!cookie.secure || url.protocol === "https:");
+}
+
+function domainMatch(hostname, domain) {
+  const host = hostname.toLowerCase();
+  return host === domain || host.endsWith(`.${domain}`);
+}
+
+function defaultCookiePath(pathname) {
+  if (!pathname.startsWith("/") || pathname === "/") return "/";
+  const rightMostSlash = pathname.lastIndexOf("/");
+  return rightMostSlash === 0 ? "/" : pathname.slice(0, rightMostSlash);
+}
+
+function assertAllowedUrl(value) {
+  const url = new URL(value);
+  if (url.protocol !== "https:" || !ALLOWED_HOSTS.has(url.hostname.toLowerCase())) {
+    throw new Error(`统一认证拒绝了不安全或非预期的跳转目标：${url.protocol}//${url.host}`);
+  }
 }
 
 function collectLoginFields(html) {
@@ -163,4 +245,3 @@ function decodeHtml(value) {
 function ensureOk(result, label) {
   if (!result.response.ok) throw new Error(`${label}失败：HTTP ${result.response.status}`);
 }
-

@@ -26,3 +26,34 @@ test("loadConfig preserves optional iclassLoginName separately from studentId", 
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("loadConfig rejects placeholders and unsafe background values", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "auto-signin-invalid-config-"));
+  const configPath = path.join(dir, "config.json");
+  try {
+    fs.writeFileSync(configPath, JSON.stringify({
+      studentId: "mock-student-id",
+      password: "在这里填写你的统一认证密码",
+      mode: "auto",
+    }));
+    assert.throws(() => loadConfig(configPath), /填写统一认证密码/);
+
+    fs.writeFileSync(configPath, JSON.stringify({
+      studentId: "mock-student-id",
+      password: "mock-password",
+      mode: "confirm",
+      pollIntervalSeconds: -1,
+    }));
+    assert.throws(() => loadConfig(configPath), /mode 只支持 auto/);
+
+    fs.writeFileSync(configPath, JSON.stringify({
+      studentId: "mock-student-id",
+      password: "mock-password",
+      mode: "auto",
+      writeLogs: "yes",
+    }));
+    assert.throws(() => loadConfig(configPath), /writeLogs 必须/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

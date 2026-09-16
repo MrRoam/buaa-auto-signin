@@ -6,6 +6,5 @@
   "pollIntervalSeconds": 20,
   "remoteRefreshSeconds": 900,
   "mode": "auto",
-  "allowInsecureTls": false,
   "writeLogs": true
 }

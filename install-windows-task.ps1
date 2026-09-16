@@ -27,6 +27,12 @@ if ($LegacyTask -and $LegacyTask.State -ne "Disabled") {
 
 $Principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Limited
 $Node = (Get-Command node -ErrorAction Stop).Source
+$ValidateConfig = Join-Path $Root "src\validate-config.mjs"
+$Config = Join-Path $Root "config.json"
+& $Node $ValidateConfig $Config
+if ($LASTEXITCODE -ne 0) {
+  throw "Invalid configuration. Run npm run setup before installing the scheduled task."
+}
 $Runner = Join-Path $Root "run-windows-hidden.ps1"
 $MainAction = New-ScheduledTaskAction -Execute $PowerShell `
   -Argument "-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$Runner`" -NodePath `"$Node`"" `

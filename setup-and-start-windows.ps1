@@ -5,6 +5,28 @@ $Config = Join-Path $Root "config.json"
 $SetupScript = Join-Path $Root "src\setup.mjs"
 $StartScript = Join-Path $Root "start-windows-background.ps1"
 
+function Protect-ConfigFile {
+  param([bool]$Required)
+  $CurrentIdentity = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+  $PreviousErrorAction = $ErrorActionPreference
+  try {
+    $ErrorActionPreference = "Continue"
+    $null = & icacls.exe $Config "/grant:r" "${CurrentIdentity}:F" 2>&1
+    $GrantExit = $LASTEXITCODE
+    $InheritanceExit = 1
+    if ($GrantExit -eq 0) {
+      $null = & icacls.exe $Config "/inheritance:r" 2>&1
+      $InheritanceExit = $LASTEXITCODE
+    }
+  } finally {
+    $ErrorActionPreference = $PreviousErrorAction
+  }
+  if ($GrantExit -ne 0 -or $InheritanceExit -ne 0) {
+    if ($Required) { throw "Could not protect config.json for the current Windows user." }
+    Write-Warning "Could not tighten permissions on the existing config.json. Run npm run setup to recreate it securely."
+  }
+}
+
 try {
   Write-Host ""
   Write-Host "BUAA iClass Sign-in Assistant" -ForegroundColor Cyan
@@ -67,6 +89,7 @@ try {
   }
   Write-Host "Node.js $VersionText is ready." -ForegroundColor Green
 
+  $ConfiguredNow = $false
   if (-not (Test-Path -LiteralPath $Config)) {
     Write-Host ""
     Write-Host "First run: enter your student ID and password. Password input is hidden." -ForegroundColor Cyan
@@ -74,9 +97,19 @@ try {
     if ($LASTEXITCODE -ne 0) {
       throw "Account setup did not complete."
     }
+    $ConfiguredNow = $true
   } else {
-    Write-Host "Local configuration found. Run npm run setup to change the account."
+    & $Node.Source (Join-Path $Root "src\validate-config.mjs") $Config
+    if ($LASTEXITCODE -ne 0) {
+      Write-Host "The existing configuration is invalid. Starting account setup." -ForegroundColor Yellow
+      & $Node.Source $SetupScript
+      if ($LASTEXITCODE -ne 0) { throw "Account setup did not complete." }
+      $ConfiguredNow = $true
+    } else {
+      Write-Host "Local configuration found. Run npm run setup to change the account."
+    }
   }
+  Protect-ConfigFile -Required $ConfiguredNow
 
   Write-Host ""
   Write-Host "Installing and starting the Windows background task..."

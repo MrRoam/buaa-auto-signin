@@ -36,7 +36,7 @@ test("checkOnce signs due iclass classes directly from the remote schedule", asy
 
   const result = await checkOnce({
     now: new Date("2026-05-18T09:56:00+08:00"),
-    config: { triggerMinutesBeforeClass: 5 },
+    config: { triggerMinutesBeforeClass: 5, studentId: "student-a" },
     client,
     state,
     logger,
@@ -44,7 +44,7 @@ test("checkOnce signs due iclass classes directly from the remote schedule", asy
   });
 
   assert.deepEqual(signedCourseIds, ["remote-course-101"]);
-  assert.equal(marked[0].key, "iclass:20260518:remote-course-101:10:00");
+  assert.match(marked[0].key, /^iclass:[a-f0-9]{16}:20260518:remote-course-101:10:00$/);
   assert.equal(marked[0].payload.result, "signed");
   assert.deepEqual(result.unhandledDue, []);
 });

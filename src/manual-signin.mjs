@@ -3,10 +3,12 @@ import readline from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 import { parseArgs, loadConfig } from "./config.mjs";
 import { IclassClient } from "./iclass-client.mjs";
+import { assertSupportedNode } from "./runtime.mjs";
+
+assertSupportedNode();
 
 const args = parseArgs();
 const config = loadConfig(args.configPath);
-if (config.allowInsecureTls) process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 const client = new IclassClient({
   studentId: config.studentId,
   password: config.password,
@@ -48,4 +50,3 @@ if (!/^y(es)?$/i.test(confirmation)) {
 const result = await client.signIn(selected.courseId);
 console.log(result.success ? `签到成功：${result.message}` : `签到失败：${result.message}`);
 if (!result.success) process.exitCode = 1;
-

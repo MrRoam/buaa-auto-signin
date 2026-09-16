@@ -56,7 +56,19 @@ test("Windows launcher keeps errors visible and bootstraps Node.js for first-tim
   assert.match(bootstrap, /OpenJS\.NodeJS\.LTS/);
   assert.match(bootstrap, /Read-Host/);
   assert.match(bootstrap, /src\\setup\.mjs/);
+  assert.match(bootstrap, /src\\validate-config\.mjs/);
+  assert.match(bootstrap, /icacls\.exe/);
   assert.match(bootstrap, /start-windows-background\.ps1/);
+});
+
+test("Windows stop disables every restart path and validates stale PID ownership", () => {
+  const stop = readScript("stop-windows-background.ps1");
+
+  assert.match(stop, /IClassStandaloneSigninAssistantHealthCheck/);
+  assert.match(stop, /Disable-ScheduledTask -TaskName \$TaskName/);
+  assert.match(stop, /Get-CimInstance Win32_Process -Filter/);
+  assert.match(stop, /src\[\\\\\/\]index\\\.mjs/);
+  assert.match(stop, /Ignored stale PID file/);
 });
 
 test("Windows vacation pause script disables autostart tasks and stops background runners", () => {
@@ -90,7 +102,7 @@ test("Windows vacation resume script restores the supported autostart path and s
   assert.match(resume, /windows-autosignin-paused\.json/);
 });
 
-test("Windows PowerShell scripts parse successfully", () => {
+test("Windows PowerShell scripts parse successfully", { skip: process.platform !== "win32" }, () => {
   const scripts = [
     "install-windows-task.ps1",
     "setup-and-start-windows.ps1",

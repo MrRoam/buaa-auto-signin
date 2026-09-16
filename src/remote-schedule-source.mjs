@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 export function dueRemoteClassTriggers(remoteClasses, now, minutesBefore) {
   const nowMs = now.getTime();
   return schedulableRemoteClasses(remoteClasses, now, minutesBefore)
@@ -17,8 +19,9 @@ export function todaysRemoteClasses(remoteClasses, now, minutesBefore) {
     .sort((a, b) => a.startAtDate - b.startAtDate);
 }
 
-export function remoteStateKey(item) {
-  return `iclass:${dateStrYYYYMMDDInChina(item.startAtDate)}:${item.courseId}:${item.classBeginTime}`;
+export function remoteStateKey(item, studentId) {
+  const account = createHash("sha256").update(String(studentId || "unknown").trim()).digest("hex").slice(0, 16);
+  return `iclass:${account}:${dateStrYYYYMMDDInChina(item.startAtDate)}:${item.courseId}:${item.classBeginTime}`;
 }
 
 export function summarizeRemoteClass(item) {

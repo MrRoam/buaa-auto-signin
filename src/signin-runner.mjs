@@ -21,7 +21,7 @@ export async function checkOnce({ now, config, client, state, logger, dryRun = f
   const due = dueRemoteClassTriggers(remoteClasses, now, config.triggerMinutesBeforeClass);
   logger.info(`当前北京时间 ${formatChinaTime(now)}，iclass 远程课表 ${today.length} 节，触发 ${due.length} 节。`, today.map(summarizeRemoteClass));
 
-  const unhandledDue = due.filter((remoteClass) => !state.has(remoteStateKey(remoteClass)));
+  const unhandledDue = due.filter((remoteClass) => !state.has(remoteStateKey(remoteClass, config.studentId)));
   if (dryRun) {
     for (const item of unhandledDue) {
       logger.info("dry-run 触发远程课表检查", summarizeRemoteClass(item));
@@ -30,7 +30,7 @@ export async function checkOnce({ now, config, client, state, logger, dryRun = f
   }
 
   for (const remoteClass of unhandledDue) {
-    const key = remoteStateKey(remoteClass);
+    const key = remoteStateKey(remoteClass, config.studentId);
     if (state.has(key)) {
       logger.info("已处理过，跳过", summarizeRemoteClass(remoteClass));
       continue;
@@ -53,6 +53,6 @@ export async function checkOnce({ now, config, client, state, logger, dryRun = f
     }
   }
 
-  const remainingDue = due.filter((remoteClass) => !state.has(remoteStateKey(remoteClass)));
+  const remainingDue = due.filter((remoteClass) => !state.has(remoteStateKey(remoteClass, config.studentId)));
   return { remoteClasses, due, unhandledDue: remainingDue, fetchFailed: false };
 }

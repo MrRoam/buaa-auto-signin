@@ -63,6 +63,7 @@ npm run dry-run
 | 命令 | 作用 |
 | --- | --- |
 | `npm run setup` | 配置或更换学号、密码，并验证登录 |
+| `npm run validate-config` | 只检查本机配置格式，不联网 |
 | `npm start` | 前台运行自动签到 |
 | `npm run signin` | 手动选择一节课堂签到 |
 | `npm run dry-run` | 获取课表并检查触发时间，不提交 |
@@ -73,7 +74,7 @@ Windows 后台管理：
 
 ```powershell
 ./start-windows-background.ps1   # 启动
-./stop-windows-background.ps1    # 停止
+./stop-windows-background.ps1    # 停止并禁用自动重启
 ./pause-windows-autosignin.ps1   # 假期暂停并禁用计划任务
 ./resume-windows-autosignin.ps1  # 恢复计划任务和后台进程
 ```
@@ -90,7 +91,6 @@ Windows 后台管理：
   "pollIntervalSeconds": 20,
   "remoteRefreshSeconds": 900,
   "mode": "auto",
-  "allowInsecureTls": false,
   "writeLogs": true
 }
 ```
@@ -103,10 +103,10 @@ Windows 后台管理：
 
 ## 隐私与安全
 
-- `config.json` 以明文保存在你的电脑上，因为后台任务需要无人值守登录。不要把它发送给别人，也不要移除 `.gitignore` 中对它的规则。
+- `config.json` 以明文保存在你的电脑上，因为后台任务需要无人值守登录。Windows 首次配置会尝试把权限限制到当前用户，macOS/Linux 会使用 `0600` 权限；不要把它发送给别人，也不要移除 `.gitignore` 中对它的规则。
 - 程序不会把学号、密码或 Cookie 写入日志；密码只用于向北航统一认证提交登录请求。
 - 如果账号密码曾经误传到 GitHub，仅删除当前文件不够，还需要清理 Git 历史并立即修改密码、注销已有会话。
-- 默认启用完整 TLS 证书校验。仅在确认是学校旧服务证书兼容问题时，才临时设置 `allowInsecureTls: true`；这会降低连接安全性。
+- 所有账号登录与签到请求都强制使用 HTTPS 并校验证书，不会自动降级到明文 HTTP。
 
 运行日志位于 `logs/assistant.log`，已处理课堂状态位于 `state/handled.json`。两者都只保留在本机。
 
@@ -119,6 +119,12 @@ Windows 后台管理：
 5. 提交签到后记录本地状态，避免重复提交。
 
 接口若被学校调整，程序可能暂时失效。欢迎提交 Issue，但请勿在 Issue、日志或截图中附带密码、Cookie、学号等个人信息。
+
+## 常见问题
+
+- **统一认证要求验证码：** 当前版本不能代替用户完成验证码。请稍后重试；若持续出现，请使用学校官方页面签到，不要反复提交密码。
+- **Windows 提示配置权限无法收紧：** 旧配置可能由管理员账户创建。运行 `npm run setup` 重新生成配置，或删除 `config.json` 后再次双击 `run-windows.bat`。
+- **停止后是否会自动恢复：** `stop-windows-background.ps1` 会同时禁用主任务和健康检查，之后不会自行恢复；再次运行 `start-windows-background.ps1` 即可启用。
 
 ## 许可证
 

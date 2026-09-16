@@ -1,6 +1,7 @@
 import { URLSearchParams } from "node:url";
 import { dateStrYYYYMMDDInChina } from "./schedule-source.mjs";
 import { resolveIclassLoginName } from "./buaa-sso.mjs";
+import { fetchTextWithTimeout } from "./http-utils.mjs";
 
 export class IclassClient {
   constructor({ studentId, password = "", iclassLoginName = "", logger }) {
@@ -114,7 +115,7 @@ export class IclassClient {
 
   async signIn(courseSchedId) {
     await this.login();
-    const timestampUrl = new URL("http://iclass.buaa.edu.cn:8081/app/common/get_timestamp.action");
+    const timestampUrl = new URL("https://iclass.buaa.edu.cn:8347/app/common/get_timestamp.action");
     this.markFresh(timestampUrl);
     const timestampPayload = await getJson(timestampUrl, {
       logger: this.logger,
@@ -123,7 +124,7 @@ export class IclassClient {
     const timestamp = String(timestampPayload?.timestamp || "");
     if (!timestamp) throw new Error("获取 iclass 服务器时间失败。 ");
 
-    const url = new URL("http://iclass.buaa.edu.cn:8081/app/course/stu_scan_sign.action");
+    const url = new URL("https://iclass.buaa.edu.cn:8347/app/course/stu_scan_sign.action");
     url.search = new URLSearchParams({ courseSchedId: String(courseSchedId), timestamp }).toString();
     this.markFresh(url);
     const body = new URLSearchParams({ id: this.userId }).toString();
@@ -148,12 +149,12 @@ export class IclassClient {
 }
 
 async function getJson(url, options = {}) {
-  const response = await fetch(url, {
+  const fetched = await fetchTextWithTimeout(fetch, url, {
     method: options.method || "GET",
     headers: noCacheHeaders(options.headers),
     body: options.body,
   });
-  const text = await response.text();
+  const { response, text } = fetched;
   if (!response.ok) {
     throw new Error(`${options.label || "request"} HTTP ${response.status}: ${text.slice(0, 200)}`);
   }

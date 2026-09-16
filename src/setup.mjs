@@ -1,9 +1,12 @@
 #!/usr/bin/env node
-import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
 import { stdin, stdout } from "node:process";
 import { IclassClient } from "./iclass-client.mjs";
+import { assertSupportedNode } from "./runtime.mjs";
+import { writePrivateJson } from "./private-config.mjs";
+
+assertSupportedNode();
 
 const configPath = path.resolve(process.cwd(), "config.json");
 console.log("\n北航 iClass 签到助手 - 首次配置\n");
@@ -13,10 +16,6 @@ const studentId = (await ask("学号：")).trim();
 if (!studentId) fail("学号不能为空。");
 const password = await askHidden("统一认证密码：");
 if (!password) fail("密码不能为空。");
-
-if (process.env.NODE_TLS_REJECT_UNAUTHORIZED !== "0") {
-  process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
-}
 
 stdout.write("正在验证账号并连接 iClass……");
 try {
@@ -35,10 +34,9 @@ const config = {
   pollIntervalSeconds: 20,
   remoteRefreshSeconds: 900,
   mode: "auto",
-  allowInsecureTls: false,
   writeLogs: true,
 };
-fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+writePrivateJson(configPath, config);
 console.log(`配置已保存到 ${configPath}`);
 console.log("自动运行：npm start    手动签到：npm run signin\n");
 

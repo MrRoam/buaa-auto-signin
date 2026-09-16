@@ -13,8 +13,8 @@
 - `SigninClient.kt`
   - 登录：`https://iclass.buaa.edu.cn:8347/app/user/login.action`
   - 查当天课堂：`https://iclass.buaa.edu.cn:8347/app/course/get_stu_course_sched.action`
-  - 服务器时间：`http://iclass.buaa.edu.cn:8081/app/common/get_timestamp.action`
-  - 提交签到：`http://iclass.buaa.edu.cn:8081/app/course/stu_scan_sign.action`
+  - 服务器时间：`https://iclass.buaa.edu.cn:8347/app/common/get_timestamp.action`
+  - 提交签到：`https://iclass.buaa.edu.cn:8347/app/course/stu_scan_sign.action`
 
 ## 本工具如何独立化
 

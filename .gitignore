@@ -1,5 +1,6 @@
 # 本机账号配置（包含统一认证密码）
 config.json
+config.json.*.tmp
 .env
 .env.*
 !.env.example
@@ -9,11 +10,13 @@ logs/
 state/
 *.log
 *.pid
+*.corrupt
 
 # 本地课表导出与开发过程文件
 schedule-data.json
 .planning/
 docs/superpowers/
+REVIEW.md
 
 # 常见工具产物
 node_modules/

@@ -6,6 +6,14 @@ $InstallScript = Join-Path $Root "install-windows-task.ps1"
 $HealthCheckScript = Join-Path $Root "ensure-windows-background.ps1"
 $LogFile = Join-Path $Root "logs\assistant.log"
 $PidFile = Join-Path $Root "state\background.pid"
+$Node = (Get-Command node -ErrorAction Stop).Source
+$ValidateConfig = Join-Path $Root "src\validate-config.mjs"
+$Config = Join-Path $Root "config.json"
+
+& $Node $ValidateConfig $Config
+if ($LASTEXITCODE -ne 0) {
+  throw "Invalid configuration. Run npm run setup before starting the background assistant."
+}
 
 function Get-AssistantProcess {
   Get-CimInstance Win32_Process |

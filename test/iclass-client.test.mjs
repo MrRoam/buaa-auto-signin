@@ -40,10 +40,14 @@ test("IclassClient queries remote iclass classes and signs by course schedule id
     }
 
     if (url.pathname === "/app/common/get_timestamp.action") {
+      assert.equal(url.protocol, "https:");
+      assert.equal(url.port, "8347");
       return jsonResponse({ timestamp: "1713600000" });
     }
 
     if (url.pathname === "/app/course/stu_scan_sign.action") {
+      assert.equal(url.protocol, "https:");
+      assert.equal(url.port, "8347");
       assert.equal(options.method, "POST");
       assert.equal(url.searchParams.get("courseSchedId"), "course-1");
       assert.equal(url.searchParams.get("timestamp"), "1713600000");

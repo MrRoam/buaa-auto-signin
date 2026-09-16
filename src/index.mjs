@@ -6,6 +6,9 @@ import { sleep } from "./time-utils.mjs";
 import { IclassClient } from "./iclass-client.mjs";
 import { nextRemoteClassTrigger, summarizeRemoteClass } from "./remote-schedule-source.mjs";
 import { checkOnce as checkRemoteOnce } from "./signin-runner.mjs";
+import { assertSupportedNode } from "./runtime.mjs";
+
+assertSupportedNode();
 
 const MAX_SCHEDULE_SLEEP_MS = 24 * 60 * 60 * 1000;
 const MIN_SCHEDULE_SLEEP_MS = 1000;
@@ -17,9 +20,6 @@ if (args.help) {
 }
 
 const config = loadConfig(args.configPath);
-if (config.allowInsecureTls) {
-  process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
-}
 const logger = new Logger(config);
 const state = new HandledState(config.stateFile);
 const client = new IclassClient({

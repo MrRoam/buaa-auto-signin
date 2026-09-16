@@ -2,16 +2,22 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 NODE="$(command -v node)"
+"$NODE" "$ROOT/src/validate-config.mjs" "$ROOT/config.json"
 UNIT_DIR="$HOME/.config/systemd/user"
 UNIT="$UNIT_DIR/iclass-standalone-signin.service"
 mkdir -p "$UNIT_DIR" "$ROOT/logs"
+escape_systemd() {
+  printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/%/%%/g'
+}
+ROOT_ESCAPED="$(escape_systemd "$ROOT")"
+NODE_ESCAPED="$(escape_systemd "$NODE")"
 cat > "$UNIT" <<UNIT
 [Unit]
 Description=Standalone iclass sign-in checker
 
 [Service]
-WorkingDirectory=$ROOT
-ExecStart=$NODE $ROOT/src/index.mjs --config $ROOT/config.json
+WorkingDirectory="$ROOT_ESCAPED"
+ExecStart="$NODE_ESCAPED" "$ROOT_ESCAPED/src/index.mjs" --config "$ROOT_ESCAPED/config.json"
 Restart=always
 RestartSec=10
 
