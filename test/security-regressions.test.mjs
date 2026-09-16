@@ -3,12 +3,13 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { HandledState } from "../src/state.mjs";
 import { remoteStateKey, dueRemoteClassTriggers } from "../src/remote-schedule-source.mjs";
 import { fetchTextWithTimeout } from "../src/http-utils.mjs";
 import { writePrivateJson } from "../src/private-config.mjs";
 
-const root = path.resolve(import.meta.dirname, "..");
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 test("first-time setup never disables TLS certificate validation", () => {
   const setup = fs.readFileSync(path.join(root, "src/setup.mjs"), "utf8");
