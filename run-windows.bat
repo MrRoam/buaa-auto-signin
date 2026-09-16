@@ -1,23 +1,18 @@
 @echo off
+chcp 65001 >nul
+setlocal
+title BUAA iClass Sign-in Assistant
 cd /d "%~dp0"
-where node >nul 2>nul
-if errorlevel 1 (
-  echo [错误] 未找到 Node.js。请先安装 Node.js 18 或更高版本。
-  echo https://nodejs.org/
-  pause
-  exit /b 1
+
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0setup-and-start-windows.ps1"
+set "ICLASS_EXIT=%errorlevel%"
+
+echo.
+if not "%ICLASS_EXIT%"=="0" (
+  echo Setup did not complete. Review the error above.
+) else (
+  echo Setup complete. The iClass assistant is running in the background.
 )
-if not exist "%~dp0config.json" (
-  node "%~dp0src\setup.mjs"
-  if errorlevel 1 (
-    pause
-    exit /b 1
-  )
-)
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0start-windows-background.ps1"
-if errorlevel 1 (
-  pause
-  exit /b 1
-)
-echo iClass 自动签到已在后台启动。
+echo.
 pause
+exit /b %ICLASS_EXIT%

@@ -46,6 +46,19 @@ test("Windows hidden runner and health check scripts avoid foreground node launc
   assert.match(health, /-WindowStyle Hidden/);
 });
 
+test("Windows launcher keeps errors visible and bootstraps Node.js for first-time users", () => {
+  const batch = readScript("run-windows.bat");
+  const bootstrap = readScript("setup-and-start-windows.ps1");
+
+  assert.match(batch, /setup-and-start-windows\.ps1/);
+  assert.match(batch, /pause/);
+  assert.match(bootstrap, /Get-Command node\.exe/);
+  assert.match(bootstrap, /OpenJS\.NodeJS\.LTS/);
+  assert.match(bootstrap, /Read-Host/);
+  assert.match(bootstrap, /src\\setup\.mjs/);
+  assert.match(bootstrap, /start-windows-background\.ps1/);
+});
+
 test("Windows vacation pause script disables autostart tasks and stops background runners", () => {
   const pause = readScript("pause-windows-autosignin.ps1");
 
@@ -80,6 +93,7 @@ test("Windows vacation resume script restores the supported autostart path and s
 test("Windows PowerShell scripts parse successfully", () => {
   const scripts = [
     "install-windows-task.ps1",
+    "setup-and-start-windows.ps1",
     "start-windows-background.ps1",
     "stop-windows-background.ps1",
     "run-windows-hidden.ps1",
