@@ -1,0 +1,19 @@
+{
+  "name": "iclass-standalone-signin-assistant",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "北航 iClass 自动课表获取与签到助手，支持自动和手动签到。",
+  "license": "MIT",
+  "scripts": {
+    "setup": "node ./src/setup.mjs",
+    "start": "node ./src/index.mjs --config ./config.json",
+    "signin": "node ./src/manual-signin.mjs --config ./config.json",
+    "dry-run": "node ./src/index.mjs --config ./config.json --dry-run",
+    "once": "node ./src/index.mjs --config ./config.json --once",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

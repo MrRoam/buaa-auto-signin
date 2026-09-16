@@ -1,0 +1,23 @@
+# 本机账号配置（包含统一认证密码）
+config.json
+.env
+.env.*
+!.env.example
+
+# 运行时数据和日志
+logs/
+state/
+*.log
+*.pid
+
+# 本地课表导出与开发过程文件
+schedule-data.json
+.planning/
+docs/superpowers/
+
+# 常见工具产物
+node_modules/
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

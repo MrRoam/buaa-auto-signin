@@ -1,0 +1,11 @@
+{
+  "studentId": "在这里填写你的学号",
+  "password": "在这里填写你的统一认证密码",
+  "iclassLoginName": "",
+  "triggerMinutesBeforeClass": 9,
+  "pollIntervalSeconds": 20,
+  "remoteRefreshSeconds": 900,
+  "mode": "auto",
+  "allowInsecureTls": false,
+  "writeLogs": true
+}
