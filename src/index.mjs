@@ -7,6 +7,7 @@ import { IclassClient } from "./iclass-client.mjs";
 import { nextRemoteClassTrigger, summarizeRemoteClass } from "./remote-schedule-source.mjs";
 import { checkOnce as checkRemoteOnce } from "./signin-runner.mjs";
 import { assertSupportedNode } from "./runtime.mjs";
+import { installFatalErrorHandlers, runResilientLoop } from "./resilience.mjs";
 
 assertSupportedNode();
 
@@ -21,6 +22,9 @@ if (args.help) {
 
 const config = loadConfig(args.configPath);
 const logger = new Logger(config);
+// 装在最前面：之后任何未捕获的致命错误都会被记录，而不是静默退出。
+installFatalErrorHandlers({ logger });
+
 const state = new HandledState(config.stateFile);
 const client = new IclassClient({
   studentId: config.studentId,
@@ -45,42 +49,40 @@ if (args.once || args.dryRun) {
   const now = args.now ? new Date(args.now) : new Date();
   await checkOnce(now);
 } else {
-  await runScheduled();
+  await runResilientLoop(scheduledStep, { logger, sleep });
 }
 
-async function runScheduled() {
-  while (true) {
-    const now = new Date();
-    const result = await checkOnce(now);
+// 常驻模式下的单步调度：返回本次应休眠多久，由 runResilientLoop 负责
+// 反复调用（单步抛错时退避保活）。
+async function scheduledStep() {
+  const now = new Date();
+  const result = await checkOnce(now);
 
-    if (result.fetchFailed || result.unhandledDue.length) {
-      const retryMs = Math.max(MIN_SCHEDULE_SLEEP_MS, Math.max(5, config.pollIntervalSeconds) * 1000);
-      logger.info("远程课表检查未完成，稍后重试。", {
-        retryInSeconds: Math.round(retryMs / 1000),
-        classes: result.unhandledDue.map(summarizeRemoteClass),
-      });
-      await sleep(retryMs);
-      continue;
-    }
-
-    const next = nextRemoteClassTrigger(result.remoteClasses, new Date(), config.triggerMinutesBeforeClass);
-    if (!next) {
-      const refreshMs = clampSleep(Math.max(60, config.remoteRefreshSeconds) * 1000);
-      logger.info("今天暂无未来远程课表触发点，稍后重新查询 iclass。", {
-        retryInSeconds: Math.round(refreshMs / 1000),
-      });
-      await sleep(refreshMs);
-      continue;
-    }
-
-    const delayMs = clampSleep(next.triggerAtDate.getTime() - Date.now());
-    logger.info("下一个远程课表触发点已设置。", {
-      triggerAt: next.triggerAtText,
-      waitSeconds: Math.round(delayMs / 1000),
-      class: summarizeRemoteClass(next),
+  if (result.fetchFailed || result.unhandledDue.length) {
+    const retryMs = Math.max(MIN_SCHEDULE_SLEEP_MS, Math.max(5, config.pollIntervalSeconds) * 1000);
+    logger.info("远程课表检查未完成，稍后重试。", {
+      retryInSeconds: Math.round(retryMs / 1000),
+      classes: result.unhandledDue.map(summarizeRemoteClass),
     });
-    await sleep(delayMs);
+    return { sleepMs: retryMs };
   }
+
+  const next = nextRemoteClassTrigger(result.remoteClasses, new Date(), config.triggerMinutesBeforeClass);
+  if (!next) {
+    const refreshMs = clampSleep(Math.max(60, config.remoteRefreshSeconds) * 1000);
+    logger.info("今天暂无未来远程课表触发点，稍后重新查询 iclass。", {
+      retryInSeconds: Math.round(refreshMs / 1000),
+    });
+    return { sleepMs: refreshMs };
+  }
+
+  const delayMs = clampSleep(next.triggerAtDate.getTime() - Date.now());
+  logger.info("下一个远程课表触发点已设置。", {
+    triggerAt: next.triggerAtText,
+    waitSeconds: Math.round(delayMs / 1000),
+    class: summarizeRemoteClass(next),
+  });
+  return { sleepMs: delayMs };
 }
 
 async function checkOnce(now) {

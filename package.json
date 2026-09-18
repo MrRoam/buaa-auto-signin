@@ -1,6 +1,6 @@
 {
   "name": "iclass-standalone-signin-assistant",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "type": "module",
   "description": "北航 iClass 自动课表获取与签到助手，支持自动和手动签到。",

@@ -5,7 +5,6 @@ $LegacyTaskName = "IClassStandaloneSigninAssistant"
 $HealthTaskName = "IClassStandaloneSigninAssistantHealthCheck"
 $PollerTaskName = "IClassStandaloneSigninAssistantPoller"
 $MainTaskName = "IClassStandaloneSigninAssistantHidden"
-$HealthCheck = Join-Path $Root "ensure-windows-background.ps1"
 $PowerShell = (Get-Command powershell.exe -ErrorAction SilentlyContinue).Source
 if (-not $PowerShell) {
   $PowerShell = (Get-Command pwsh.exe).Source
@@ -45,50 +44,42 @@ Register-ScheduledTask -TaskName $MainTaskName -Action $MainAction `
   -Trigger (New-ScheduledTaskTrigger -AtLogOn -User "$env:USERDOMAIN\$env:USERNAME") `
   -Principal $Principal -Settings $MainSettings `
   -Description "Persistent hidden iclass scheduler, independent of terminal windows" -Force | Out-Null
-$HealthAction = New-ScheduledTaskAction `
-  -Execute $PowerShell `
-  -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$HealthCheck`"" `
-  -WorkingDirectory $Root
-$HealthTriggers = @(
-  New-ScheduledTaskTrigger -AtLogOn -User "$env:USERDOMAIN\$env:USERNAME"
-  New-ScheduledTaskTrigger `
-    -Once `
-    -At (Get-Date).Date `
-    -RepetitionInterval (New-TimeSpan -Minutes 30) `
-    -RepetitionDuration (New-TimeSpan -Days 3650)
-)
-$HealthSettings = New-ScheduledTaskSettingsSet `
-  -AllowStartIfOnBatteries `
-  -DontStopIfGoingOnBatteries `
-  -ExecutionTimeLimit (New-TimeSpan -Minutes 3) `
-  -MultipleInstances IgnoreNew `
-  -StartWhenAvailable `
-  -Hidden
 
-$ExistingHealthTask = Get-ScheduledTask -TaskName $HealthTaskName -ErrorAction SilentlyContinue
-if ($ExistingHealthTask) {
-  if ($ExistingHealthTask.State -eq "Running") {
-    Stop-ScheduledTask -TaskName $HealthTaskName
-    Start-Sleep -Seconds 2
-  }
-  Unregister-ScheduledTask -TaskName $HealthTaskName -Confirm:$false
-}
-Register-ScheduledTask `
-  -TaskName $HealthTaskName `
-  -Action $HealthAction `
-  -Trigger $HealthTriggers `
-  -Principal $Principal `
-  -Settings $HealthSettings `
-  -Description "Hidden health check that restarts the iclass sign-in scheduler if it is not running" `
-  -Force | Out-Null
-
-$PollerTask = Get-ScheduledTask -TaskName $PollerTaskName -ErrorAction SilentlyContinue
+$PollerTask = Get-ScheduledTask |
+  Where-Object { $_.TaskName -eq $PollerTaskName } |
+  Select-Object -First 1
 if ($PollerTask) {
   if ($PollerTask.State -eq "Running") {
     Stop-ScheduledTask -TaskName $PollerTaskName
   }
-  Unregister-ScheduledTask -TaskName $PollerTaskName -Confirm:$false
-  Write-Host "Removed old once-per-interval poller task: $PollerTaskName"
+  try {
+    Unregister-ScheduledTask -TaskName $PollerTaskName -Confirm:$false -ErrorAction Stop
+    Write-Host "Removed old once-per-interval poller task: $PollerTaskName"
+  } catch {
+    Write-Warning "Could not remove the old poller task ${PollerTaskName}: $($_.Exception.Message)"
+  }
 }
 
-Write-Host "Installed hidden health check task: $HealthTaskName"
+# 每 30 分钟跑一次的隐藏健康检查会强制创建一个控制台再隐藏，表现为终端窗口闪烁。
+# 它的兜底能力与主任务的 RestartCount + 登录触发重叠，且已被进程内自愈取代，
+# 因此不再注册，并清理掉机器上可能残留的旧任务。
+$HealthTask = Get-ScheduledTask |
+  Where-Object { $_.TaskName -eq $HealthTaskName } |
+  Select-Object -First 1
+if ($HealthTask) {
+  if ($HealthTask.State -eq "Running") {
+    Stop-ScheduledTask -TaskName $HealthTaskName
+    Start-Sleep -Seconds 2
+  }
+  try {
+    Unregister-ScheduledTask -TaskName $HealthTaskName -Confirm:$false -ErrorAction Stop
+    Write-Host "Removed periodic health check task (no longer needed): $HealthTaskName"
+  } catch {
+    Write-Warning "Could not remove the periodic health check task ${HealthTaskName}: $($_.Exception.Message)"
+    Write-Warning "Remove it manually in Task Scheduler, or run: Unregister-ScheduledTask -TaskName $HealthTaskName -Confirm:`$false"
+  }
+} else {
+  Write-Host "Periodic health check task is not registered (expected): $HealthTaskName"
+}
+
+Write-Host "Installed hidden main task: $MainTaskName"

@@ -11,14 +11,11 @@ function readScript(name) {
   return fs.readFileSync(path.join(root, name), "utf8");
 }
 
-test("Windows task installer uses a hidden health check to bootstrap the persistent runner", () => {
+test("Windows task installer registers one hidden main task and no periodic health check", () => {
   const install = readScript("install-windows-task.ps1");
 
   assert.match(install, /\$LegacyTaskName = "IClassStandaloneSigninAssistant"/);
-  assert.match(install, /\$HealthTaskName = "IClassStandaloneSigninAssistantHealthCheck"/);
   assert.match(install, /-WindowStyle Hidden/);
-  assert.match(install, /ensure-windows-background\.ps1/);
-  assert.match(install, /New-TimeSpan -Minutes 30/);
   assert.match(install, /\$PollerTaskName = "IClassStandaloneSigninAssistantPoller"/);
   assert.match(install, /Unregister-ScheduledTask -TaskName \$PollerTaskName/);
   assert.match(install, /Disable-ScheduledTask -TaskName \$LegacyTaskName/);
@@ -26,25 +23,33 @@ test("Windows task installer uses a hidden health check to bootstrap the persist
   assert.match(install, /Register-ScheduledTask -TaskName \$MainTaskName/);
   assert.match(install, /-ExecutionTimeLimit \(\[TimeSpan\]::Zero\)/);
   assert.match(install, /-RestartCount 3/);
+
+  // 每 30 分钟的隐藏健康检查会强制创建控制台并导致终端窗口闪烁，已移除：
+  // 只允许“清理已有任务”，不允许再注册。
+  assert.match(install, /Unregister-ScheduledTask -TaskName \$HealthTaskName -Confirm:\$false/);
+  assert.doesNotMatch(install, /Register-ScheduledTask[\s\S]{0,400}HealthTaskName/);
+  assert.doesNotMatch(install, /New-TimeSpan -Minutes 30/);
+  assert.doesNotMatch(install, /ensure-windows-background\.ps1/);
 });
 
-test("Windows hidden runner and health check scripts avoid foreground node launches", () => {
+test("Windows hidden runner keeps the node process detached from terminal windows", () => {
   const runner = readScript("run-windows-hidden.ps1");
-  const health = readScript("ensure-windows-background.ps1");
+  const ensure = readScript("ensure-windows-background.ps1");
 
   assert.match(runner, /-RedirectStandardError \$StdErrFile/);
   assert.match(runner, /-Wait -PassThru/);
   assert.match(runner, /src\\index\.mjs/);
   assert.doesNotMatch(runner, /--once/);
 
-  assert.match(health, /Get-CimInstance Win32_Process/);
-  assert.match(health, /\$LegacyTaskName = "IClassStandaloneSigninAssistant"/);
-  assert.match(health, /Stop-ScheduledTask -TaskName \$LegacyTaskName/);
-  assert.match(health, /Start-ScheduledTask -TaskName \$MainTaskName/);
-  assert.match(health, /Get-Command node/);
-  assert.match(health, /src\\index\.mjs/);
-  assert.match(health, /-RedirectStandardError \$StdErrFile/);
-  assert.match(health, /-WindowStyle Hidden/);
+  // 该脚本现在只在手动兜底时被调用，不再是计划任务。
+  assert.match(ensure, /Get-CimInstance Win32_Process/);
+  assert.match(ensure, /\$LegacyTaskName = "IClassStandaloneSigninAssistant"/);
+  assert.match(ensure, /Stop-ScheduledTask -TaskName \$LegacyTaskName/);
+  assert.match(ensure, /Start-ScheduledTask -TaskName \$MainTaskName/);
+  assert.match(ensure, /Get-Command node/);
+  assert.match(ensure, /src\\index\.mjs/);
+  assert.match(ensure, /-RedirectStandardError \$StdErrFile/);
+  assert.match(ensure, /-WindowStyle Hidden/);
 });
 
 test("Windows launcher keeps errors visible and bootstraps Node.js for first-time users", () => {
@@ -60,6 +65,17 @@ test("Windows launcher keeps errors visible and bootstraps Node.js for first-tim
   assert.match(bootstrap, /src\\validate-config\.mjs/);
   assert.match(bootstrap, /icacls\.exe/);
   assert.match(bootstrap, /start-windows-background\.ps1/);
+});
+
+test("Windows start script boots the main task directly instead of a health check", () => {
+  const start = readScript("start-windows-background.ps1");
+
+  assert.match(start, /\$MainTaskName = "IClassStandaloneSigninAssistantHidden"/);
+  assert.match(start, /Start-ScheduledTask -TaskName \$MainTaskName/);
+  assert.match(start, /Enable-ScheduledTask -TaskName \$MainTaskName/);
+  assert.match(start, /Get-AssistantProcess/);
+  assert.doesNotMatch(start, /HealthTaskName/);
+  assert.doesNotMatch(start, /IClassStandaloneSigninAssistantHealthCheck/);
 });
 
 test("Windows stop disables every restart path and validates stale PID ownership", () => {
@@ -91,19 +107,19 @@ test("Windows vacation pause script disables autostart tasks and stops backgroun
   assert.match(pause, /windows-autosignin-paused\.json/);
 });
 
-test("Windows vacation resume script restores the supported autostart path and starts the runner", () => {
+test("Windows vacation resume script restores the main autostart path and starts the runner", () => {
   const resume = readScript("resume-windows-autosignin.ps1");
 
-  assert.match(resume, /\$HealthTaskName = "IClassStandaloneSigninAssistantHealthCheck"/);
+  assert.match(resume, /\$MainTaskName = "IClassStandaloneSigninAssistantHidden"/);
   assert.match(resume, /install-windows-task\.ps1/);
   assert.match(resume, /start-windows-background\.ps1/);
-  assert.match(resume, /Enable-ScheduledTask -TaskName \$HealthTaskName/);
+  assert.match(resume, /Enable-ScheduledTask -TaskName \$MainTaskName/);
   assert.match(resume, /& \$InstallScript/);
   assert.match(resume, /& \$StartScript/);
   assert.match(resume, /windows-autosignin-paused\.json/);
 });
 
-test("Windows PowerShell scripts parse successfully", { skip: process.platform !== "win32" }, () => {
+test("PowerShell scripts parse successfully", { skip: process.platform !== "win32" }, () => {
   const scripts = [
     "install-windows-task.ps1",
     "setup-and-start-windows.ps1",

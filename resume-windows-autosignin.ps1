@@ -1,7 +1,7 @@
 $ErrorActionPreference = "Stop"
 
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
-$HealthTaskName = "IClassStandaloneSigninAssistantHealthCheck"
+$MainTaskName = "IClassStandaloneSigninAssistantHidden"
 $InstallScript = Join-Path $Root "install-windows-task.ps1"
 $StartScript = Join-Path $Root "start-windows-background.ps1"
 $PauseStateFile = Join-Path $Root "state\windows-autosignin-paused.json"
@@ -16,18 +16,18 @@ if (Test-Path $PauseStateFile) {
   }
 }
 
-$HealthTask = Get-ScheduledTask -TaskName $HealthTaskName -ErrorAction SilentlyContinue
-if (-not $HealthTask) {
-  Write-Host "Health check task not found. Reinstalling: $HealthTaskName"
+$MainTask = Get-ScheduledTask -TaskName $MainTaskName -ErrorAction SilentlyContinue
+if (-not $MainTask) {
+  Write-Host "Autostart task not found. Reinstalling: $MainTaskName"
   & $InstallScript
-  $HealthTask = Get-ScheduledTask -TaskName $HealthTaskName -ErrorAction Stop
+  $MainTask = Get-ScheduledTask -TaskName $MainTaskName -ErrorAction Stop
 }
 
-if ($HealthTask.State -eq "Disabled") {
-  Enable-ScheduledTask -TaskName $HealthTaskName | Out-Null
-  Write-Host "Re-enabled autostart scheduled task: $HealthTaskName"
+if ($MainTask.State -eq "Disabled") {
+  Enable-ScheduledTask -TaskName $MainTaskName | Out-Null
+  Write-Host "Re-enabled autostart scheduled task: $MainTaskName"
 } else {
-  Write-Host "Autostart scheduled task is available: $HealthTaskName. State: $($HealthTask.State)"
+  Write-Host "Autostart scheduled task is available: $MainTaskName. State: $($MainTask.State)"
 }
 
 & $StartScript
